@@ -1,0 +1,34 @@
+min_version = "2026.10.11"
+
+[settings]
+minimum_release_age = "7d"
+
+[tasks.lint]
+description = "Run all linters"
+depends = ["lint:*"]
+
+[tasks."lint:editorconfig"]
+description = "Lint files against .editorconfig"
+run = "editorconfig-checker"
+
+[tasks."lint:markdown"]
+description = "Lint Markdown files"
+run = "rumdl check --deny-config-warnings"
+
+[tasks."lint:toml"]
+description = "Lint TOML files"
+run = [
+  "tombi lint --error-on-warnings .",
+  "tombi format --check --diff .",
+]
+
+[tasks."lint:zizmor"]
+description = "Audit GitHub Actions files"
+run = "zizmor --strict-collection ."
+tools = { gh = "2.103.2" }
+
+[tools]
+editorconfig-checker = "4.0.2"  # Lint files against .editorconfig
+rumdl = "0.3.0"                 # Lint Markdown files
+tombi = "1.9.5"                 # Lint TOML files
+zizmor = "1.31.1"               # Audit GitHub Actions files
