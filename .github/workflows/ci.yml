@@ -1,0 +1,139 @@
+name: ci
+
+on:
+  pull_request: {}
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+
+env:
+  MISE_LOCKED: 1
+
+jobs:
+  lint:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install mise and the pinned tools
+        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+        with:
+          cache: false  # Restored tools aren't verified, so don't cache them
+          version: 2026.10.11
+
+      - name: Lint files against .editorconfig
+        run: mise run lint:editorconfig
+
+      - name: Lint Markdown files
+        run: mise run lint:markdown
+
+      - name: Lint TOML files
+        run: mise run lint:toml
+
+      - name: Audit GitHub Actions files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: mise run lint:zizmor
+
+  test:
+    # Every job publishes to the same storage zone, so they take turns.
+    concurrency:
+      group: test-storage-zone
+      # Let more than one job wait, so a newer job won't cancel a pending one.
+      queue: max
+
+    environment: integration-testing
+
+    permissions:
+      pull-requests: write
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - ubuntu-26.04
+          - ubuntu-26.04-arm
+
+    steps:
+      - name: Make a page that only this job could publish
+        env:
+          RUNNER: ${{ matrix.runner }}
+        run: |
+          mkdir site
+          echo "Run $GITHUB_RUN_ID, attempt $GITHUB_RUN_ATTEMPT, on $RUNNER" > site/index.html
+
+      # pipx would run a executable named `watershipup` in the working directory
+      # if it found one, so we move into a new, empty, temporary directory first
+      # to ensure we execute only the `watershipup` that we download.
+      #
+      # This fake executable ensures that we're defensive.
+      - name: Plant a fake `watershipup`
+        run: echo 'raise SystemExit("pipx ran the workspace file named watershipup")' > watershipup
+
+      - name: Publish the page
+        uses: $/
+        with:
+          directory: site
+          zone: ${{ vars.WATERSHIPUP_TEST_ZONE }}
+          password: ${{ secrets.WATERSHIPUP_TEST_PASSWORD }}
+
+      - name: Check what was published
+        env:
+          PASSWORD: ${{ secrets.WATERSHIPUP_TEST_READ_ONLY_PASSWORD }}
+          ZONE: ${{ vars.WATERSHIPUP_TEST_ZONE }}
+        run: |
+          curl --fail --header @- --show-error --silent "https://storage.bunnycdn.com/$ZONE/index.html" <<< "AccessKey: $PASSWORD" > published.html
+          cat published.html
+          cmp site/index.html published.html
+
+      - name: Change the page, and add one that only this job could
+        env:
+          RUNNER: ${{ matrix.runner }}
+        run: |
+          echo "Changed" >> site/index.html
+          echo "New" > "site/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$RUNNER.html"
+
+      - name: Dry run the changed page
+        uses: $/
+        with:
+          directory: site
+          zone: ${{ vars.WATERSHIPUP_TEST_ZONE }}
+          password: ${{ secrets.WATERSHIPUP_TEST_READ_ONLY_PASSWORD }}
+          dry-run: true
+
+      - name: Check that the dry run published nothing
+        env:
+          PASSWORD: ${{ secrets.WATERSHIPUP_TEST_READ_ONLY_PASSWORD }}
+          ZONE: ${{ vars.WATERSHIPUP_TEST_ZONE }}
+        run: |
+          curl --fail --header @- --show-error --silent "https://storage.bunnycdn.com/$ZONE/index.html" <<< "AccessKey: $PASSWORD" > still-published.html
+          cat still-published.html
+          cmp published.html still-published.html
+
+      - name: Check the pull request's comments
+        if: github.event.pull_request.number
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+          RUNNER: ${{ matrix.runner }}
+          ZONE: ${{ vars.WATERSHIPUP_TEST_ZONE }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments" --jq '.[] | select(.user.login == "github-actions[bot]") | .body | @json' | tail -n 2 > comments.jsonl
+          cat comments.jsonl
+          head -n 1 comments.jsonl | grep -F "## Published to \`$ZONE\`"
+          tail -n 1 comments.jsonl | grep -F "## Would publish to \`$ZONE\`"
+          tail -n 1 comments.jsonl | grep -F "\`$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$RUNNER.html\`"

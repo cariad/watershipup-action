@@ -1,0 +1,126 @@
+name: Publish with WatershipUp
+description: >-
+  Publishes a directory to a bunny.net storage zone with WatershipUp, and
+  comments the report on the pull request when there is one.
+
+inputs:
+  directory:
+    description: The directory to publish.
+    required: true
+
+  zone:
+    description: The name of the storage zone to publish to.
+    required: true
+
+  password:
+    description: >-
+      The storage zone's read-write password, or its read-only password for a
+      dry run. Pass it from a secret.
+    required: true
+
+  dry-run:
+    description: >-
+      `true` to only show what a publish would upload and delete, without
+      changing the zone. Defaults to `false`.
+    required: false
+    default: "false"
+
+  watershipup-version:
+    description: The version of WatershipUp to publish with. Defaults to the latest release.
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      id: python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: ">=3.14"
+        update-environment: false
+
+    - name: Publish the directory
+      id: publish
+      shell: bash
+      env:
+        DIRECTORY: ${{ inputs.directory }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        PYTHON: ${{ steps.python.outputs.python-path }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        WATERSHIPUP_PASSWORD: ${{ inputs.password }}
+        WATERSHIPUP_VERSION: ${{ inputs.watershipup-version }}
+        ZONE: ${{ inputs.zone }}
+      run: |
+        # Anything but `true` or `false` is refused, so that a typo can't turn a dry
+        # run into a publish.
+        case $DRY_RUN in
+          true)
+            flags=(--dry-run)
+            heading="Would publish to"
+            ;;
+          false)
+            flags=()
+            heading="Published to"
+            ;;
+          *)
+            echo "::error::dry-run must be true or false."
+            exit 1
+            ;;
+        esac
+
+        if [[ -z $DIRECTORY ]]; then
+          echo "::error::directory is required."
+          exit 1
+        fi
+
+        # Make the path absolute:
+        [[ $DIRECTORY == /* ]] || DIRECTORY=$PWD/$DIRECTORY
+
+        empty_dir=$(mktemp -d)
+        cd "$empty_dir"
+
+        # pipx would run a executable named `watershipup` in the working
+        # directory if it found one, so we'll move into a new, empty, temporary
+        # directory first to ensure we execute only the `watershipup` that we
+        # download.
+        report=$(pipx run --no-cache --python "$PYTHON" "watershipup${WATERSHIPUP_VERSION:+==$WATERSHIPUP_VERSION}" "${flags[@]}" --output=markdown --zone="$ZONE" -- "$DIRECTORY")
+        echo "$report"
+
+        title="## $heading \`$ZONE\`"
+        printf '%s\n\n%s\n' "$title" "$report" > report.md
+
+        # Prints the report, or its title and the note $2 when it's over $1 bytes.
+        fit() {
+          if (( $(wc -c < report.md) > $1 )); then
+            printf '%s\n\n%s\n' "$title" "$2"
+          else
+            cat report.md
+          fi
+        }
+
+        fit 1048576 "The report is too long for the job summary. See the log." >> "$GITHUB_STEP_SUMMARY"
+        fit 65536 "The report is too long for a comment. See the [workflow run]($RUN_URL)." > comment.md
+        echo "comment=$PWD/comment.md" >> "$GITHUB_OUTPUT"
+
+    - name: Comment on the pull request
+      if: ${{ always() && github.event.pull_request.number }}
+      continue-on-error: true
+      shell: bash
+      env:
+        COMMENT: ${{ steps.publish.outputs.comment }}
+        GH_TOKEN: ${{ github.token }}
+        PULL_REQUEST: ${{ github.event.pull_request.number }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        ZONE: ${{ inputs.zone }}
+      run: |
+        export GH_HOST=${GITHUB_SERVER_URL#*://}
+
+        {
+          if [[ -z $COMMENT ]]; then
+            echo "## WatershipUp didn't finish for \`$ZONE\`"
+            echo
+            echo "See the [workflow run]($RUN_URL)."
+          else
+            cat "$COMMENT"
+          fi
+        } | gh pr comment "$PULL_REQUEST" --repo "$GITHUB_REPOSITORY" --body-file -
