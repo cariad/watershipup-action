@@ -91,7 +91,9 @@ GitHub doesn't give a pull request from a fork your secrets, or a token that can
 
 ### Merged pull requests
 
-A publish usually runs on the push after a pull request is merged, and that push has no pull request of its own. To comment what the publish uploaded and deleted on the pull request that was merged, set `pull-request` to `merged`. The action then comments on the merged pull request that made the workflow's commit, and on a push that no pull request made, or on any event but a push, it doesn't comment.
+A publish usually runs on the push after a pull request is merged, and that push has no pull request of its own. To comment what the publish uploaded and deleted on the pull request that was merged, set `pull-request` to `merged`. The action then comments on the latest pull request that merged the workflow's commit into the pushed branch.
+
+On a push that no pull request made, or on any event but a push, it doesn't comment.
 
 The publish job's `GITHUB_TOKEN` needs `pull-requests: write` too. Its concurrency group has `queue: max`, so that a newer push doesn't cancel a waiting publish, which would leave its pull request without a comment:
 
