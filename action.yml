@@ -124,6 +124,13 @@ runs:
         # Only a merged pull request, so that an open one whose branch has the
         # commit isn't picked.
         if [[ $PULL_REQUEST == merged ]]; then
+          # Only a push, so that a rerun at the commit by any other event, like a
+          # `workflow_dispatch`, doesn't comment the pull request again.
+          if [[ $GITHUB_EVENT_NAME != push ]]; then
+            echo "::notice::The workflow ran on $GITHUB_EVENT_NAME, not a push, so there's no merged pull request to comment on."
+            exit 0
+          fi
+
           PULL_REQUEST=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at)][0].number // empty')
 
           if [[ -z $PULL_REQUEST ]]; then
