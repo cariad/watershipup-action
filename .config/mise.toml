@@ -22,6 +22,10 @@ run = [
   "tombi format --check --diff .",
 ]
 
+[tasks."lock:python"]
+description = "Lock WatershipUp and its dependencies"
+run = "uv pip compile --universal --generate-hashes --python-version 3.14 requirements.in -o requirements.txt"
+
 [tasks."lint:zizmor"]
 description = "Audit GitHub Actions files"
 run = "zizmor --strict-collection ."
@@ -31,4 +35,5 @@ tools = { gh = "2.103.2" }
 editorconfig-checker = "4.0.2"  # Lint files against .editorconfig
 rumdl = "0.3.0"                 # Lint Markdown files
 tombi = "1.9.5"                 # Lint TOML files
+uv = "0.13.5"                   # Lock WatershipUp and its dependencies
 zizmor = "1.31.1"               # Audit GitHub Actions files

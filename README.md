@@ -91,13 +91,12 @@ GitHub doesn't give a pull request from a fork your secrets, or a token that can
 
 ## Inputs
 
-| Input                 | Required | Description                                                                                                 |
-| --------------------- | -------- | -----------                                                                                                 |
-| `directory`           | Yes      | The directory to publish.                                                                                   |
-| `zone`                | Yes      | The name of the storage zone to publish to.                                                                 |
-| `password`            | Yes      | The storage zone's read-write password, or its read-only password for a dry run. Pass it from a secret.     |
-| `dry-run`             | No       | `true` to only show what a publish would upload and delete, without changing the zone. Defaults to `false`. |
-| `watershipup-version` | No       | The version of WatershipUp to publish with. Defaults to the latest release.                                 |
+| Input       | Required | Description                                                                                                 |
+| ----------- | -------- | -----------                                                                                                 |
+| `directory` | Yes      | The directory to publish.                                                                                   |
+| `zone`      | Yes      | The name of the storage zone to publish to.                                                                 |
+| `password`  | Yes      | The storage zone's read-write password, or its read-only password for a dry run. Pass it from a secret.     |
+| `dry-run`   | No       | `true` to only show what a publish would upload and delete, without changing the zone. Defaults to `false`. |
 
 ## Security
 

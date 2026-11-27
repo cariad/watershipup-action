@@ -25,10 +25,6 @@ inputs:
     required: false
     default: "false"
 
-  watershipup-version:
-    description: The version of WatershipUp to publish with. Defaults to the latest release.
-    required: false
-
 runs:
   using: composite
   steps:
@@ -48,7 +44,6 @@ runs:
         PYTHON: ${{ steps.python.outputs.python-path }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         WATERSHIPUP_PASSWORD: ${{ inputs.password }}
-        WATERSHIPUP_VERSION: ${{ inputs.watershipup-version }}
         ZONE: ${{ inputs.zone }}
       run: |
         # Anything but `true` or `false` is refused, so that a typo can't turn a dry
@@ -76,14 +71,17 @@ runs:
         # Make the path absolute:
         [[ $DIRECTORY == /* ]] || DIRECTORY=$PWD/$DIRECTORY
 
+        venv=$(mktemp -d "$RUNNER_TEMP/watershipup-venv.XXXXXX")
+        "$PYTHON" -I -m venv "$venv"
+
+        [[ $RUNNER_OS == Windows ]] && bin=$venv/Scripts || bin=$venv/bin
+
+        "$bin/pip" install --disable-pip-version-check --no-cache-dir --no-deps --only-binary :all: --quiet --require-hashes -r "$GITHUB_ACTION_PATH/requirements.txt"
+
         empty_dir=$(mktemp -d)
         cd "$empty_dir"
 
-        # pipx would run a executable named `watershipup` in the working
-        # directory if it found one, so we'll move into a new, empty, temporary
-        # directory first to ensure we execute only the `watershipup` that we
-        # download.
-        report=$(pipx run --no-cache --python "$PYTHON" "watershipup${WATERSHIPUP_VERSION:+==$WATERSHIPUP_VERSION}" "${flags[@]}" --output=markdown --zone="$ZONE" -- "$DIRECTORY")
+        report=$("$bin/watershipup" "${flags[@]}" --output=markdown --zone="$ZONE" -- "$DIRECTORY")
         echo "$report"
 
         title="## $heading \`$ZONE\`"

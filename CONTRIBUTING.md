@@ -65,9 +65,9 @@ GitHub doesn't give secrets to a pull request from a fork, so its `test` jobs fa
 
 ## Bumping versions
 
-Dependabot bumps the actions in `action.yml` and `.github/workflows/`. Bump everything else by hand:
+Dependabot bumps the actions in `action.yml` and `.github/workflows/`, and WatershipUp and its dependencies in `requirements.txt`. CI's `test` job publishes with each of Dependabot's pull requests before it merges. Bump everything else by hand:
 
-- **WatershipUp:** nothing to bump, because the action runs the latest release, and so does CI.
+- **WatershipUp:** to take a release before Dependabot proposes it, `requirements.in`, then run `mise run lock:python` to recompile `requirements.txt`.
 - **Python:** when WatershipUp needs a newer Python, `python-version` in `action.yml`.
 - **mise:** `min_version` in `.config/mise.toml`, and `version` in the `jdx/mise-action` step in `.github/workflows/ci.yml`.
 - **Tools:** `.config/mise.toml`, then run `mise lock`.
