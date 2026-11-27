@@ -76,13 +76,13 @@ jobs:
           mkdir site
           echo "Run $GITHUB_RUN_ID, attempt $GITHUB_RUN_ATTEMPT, on $RUNNER" > site/index.html
 
-      # pipx would run a executable named `watershipup` in the working directory
-      # if it found one, so we move into a new, empty, temporary directory first
-      # to ensure we execute only the `watershipup` that we download.
-      #
-      # This fake executable ensures that we're defensive.
-      - name: Plant a fake `watershipup`
-        run: echo 'raise SystemExit("pipx ran the workspace file named watershipup")' > watershipup
+      # The action must run only the `watershipup` that it installs, and the
+      # standard library's `venv`, never a file of either name in the
+      # workspace. These fakes fail the publish if the action runs them.
+      - name: Plant a fake `watershipup` and `venv`
+        run: |
+          echo 'raise SystemExit("The action ran the workspace file named watershipup")' > watershipup
+          echo 'raise SystemExit("The action imported the workspace file named venv.py")' > venv.py
 
       - name: Publish the page
         uses: $/
