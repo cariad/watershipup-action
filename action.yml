@@ -1,7 +1,7 @@
 name: Publish with WatershipUp
 description: >-
   Publishes a directory to a bunny.net storage zone with WatershipUp, and
-  comments the report on the pull request when there is one.
+  comments the report on a pull request.
 
 inputs:
   directory:
@@ -24,6 +24,14 @@ inputs:
       changing the zone. Defaults to `false`.
     required: false
     default: "false"
+
+  pull-request:
+    description: >-
+      The number of the pull request to comment the report on, or `merged` for
+      the pull request that was merged to make the workflow's commit. Empty to
+      not comment. Defaults to the workflow's pull request.
+    required: false
+    default: ${{ github.event.pull_request.number }}
 
 runs:
   using: composite
@@ -101,17 +109,36 @@ runs:
         echo "comment=$PWD/comment.md" >> "$GITHUB_OUTPUT"
 
     - name: Comment on the pull request
-      if: ${{ always() && github.event.pull_request.number }}
+      if: ${{ always() && inputs.pull-request }}
       continue-on-error: true
       shell: bash
       env:
         COMMENT: ${{ steps.publish.outputs.comment }}
         GH_TOKEN: ${{ github.token }}
-        PULL_REQUEST: ${{ github.event.pull_request.number }}
+        PULL_REQUEST: ${{ inputs.pull-request }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         ZONE: ${{ inputs.zone }}
       run: |
         export GH_HOST=${GITHUB_SERVER_URL#*://}
+
+        # Only the latest pull request merged into the pushed branch of this
+        # repository, so that an open one whose branch has the commit, or one
+        # that merged the same commit into another branch, isn't picked.
+        if [[ $PULL_REQUEST == merged ]]; then
+          # Only a push, so that a rerun at the commit by any other event, like a
+          # `workflow_dispatch`, doesn't comment the pull request again.
+          if [[ $GITHUB_EVENT_NAME != push ]]; then
+            echo "::notice::The workflow ran on $GITHUB_EVENT_NAME, not a push, so there's no merged pull request to comment on."
+            exit 0
+          fi
+
+          PULL_REQUEST=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at and .base.ref == env.GITHUB_REF_NAME and .base.repo.full_name == env.GITHUB_REPOSITORY)] | sort_by(.merged_at) | last.number // empty')
+
+          if [[ -z $PULL_REQUEST ]]; then
+            echo "::notice::No merged pull request made $GITHUB_SHA, so there's nothing to comment on."
+            exit 0
+          fi
+        fi
 
         {
           if [[ -z $COMMENT ]]; then

@@ -50,7 +50,7 @@ To see what a publish would upload and delete, without changing the zone, set `d
 
 ## Pull requests
 
-When the workflow runs for a pull request, the action also comments its report on the pull request, with a new comment for every run. A run that fails, times out or is cancelled comments a link to the workflow run instead, and so does a report over GitHub's 65,536-character limit for a comment.
+When the workflow runs for a pull request, the action also comments its report on the pull request, with a new comment for every run. To comment on a different pull request, set `pull-request` to its number, and to not comment, set it to an empty string. A run that fails, times out or is cancelled comments a link to the workflow run instead, and so does a report over GitHub's 65,536-character limit for a comment.
 
 The comments show the zone's name, and GitHub doesn't hide secrets in comments, so don't pass the zone from a secret.
 
@@ -89,14 +89,56 @@ jobs:
 
 GitHub doesn't give a pull request from a fork your secrets, or a token that can comment, so the action can't dry run those. Dependabot's pull requests can only read Dependabot secrets, so to dry run those, add the read-only password under *Settings* › *Secrets and variables* › *Dependabot* too.
 
+### Merged pull requests
+
+A publish usually runs on the push after a pull request is merged, and that push has no pull request of its own. To comment what the publish uploaded and deleted on the pull request that was merged, set `pull-request` to `merged`. The action then comments on the latest pull request that merged the workflow's commit into the pushed branch.
+
+On a push that no pull request made, or on any event but a push, it doesn't comment.
+
+The publish job's `GITHUB_TOKEN` needs `pull-requests: write` too. Its concurrency group has `queue: max`, so that a newer push doesn't cancel a waiting publish, which would leave its pull request without a comment:
+
+```yaml
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-26.04
+
+    concurrency:
+      group: publish-example-zone
+      queue: max
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@<commit> # <release>
+        with:
+          persist-credentials: false
+
+      # Build your site into `public` here.
+
+      - uses: cariad/watershipup-action@<commit> # <release>
+        with:
+          directory: public
+          zone: example-zone
+          password: ${{ secrets.STORAGE_ZONE_PASSWORD }}
+          pull-request: merged
+```
+
 ## Inputs
 
-| Input       | Required | Description                                                                                                 |
-| ----------- | -------- | -----------                                                                                                 |
-| `directory` | Yes      | The directory to publish.                                                                                   |
-| `zone`      | Yes      | The name of the storage zone to publish to.                                                                 |
-| `password`  | Yes      | The storage zone's read-write password, or its read-only password for a dry run. Pass it from a secret.     |
-| `dry-run`   | No       | `true` to only show what a publish would upload and delete, without changing the zone. Defaults to `false`. |
+| Input          | Required | Description                                                                                                                                                                                             |
+| -------------- | -------- | -----------                                                                                                                                                                                             |
+| `directory`    | Yes      | The directory to publish.                                                                                                                                                                               |
+| `zone`         | Yes      | The name of the storage zone to publish to.                                                                                                                                                             |
+| `password`     | Yes      | The storage zone's read-write password, or its read-only password for a dry run. Pass it from a secret.                                                                                                 |
+| `dry-run`      | No       | `true` to only show what a publish would upload and delete, without changing the zone. Defaults to `false`.                                                                                             |
+| `pull-request` | No       | The number of the pull request to comment the report on, or `merged` for the pull request that was merged to make the workflow's commit. Empty to not comment. Defaults to the workflow's pull request. |
 
 ## Security
 

@@ -56,6 +56,7 @@ jobs:
     environment: integration-testing
 
     permissions:
+      contents: read  # To find the pull request that made a pushed commit
       pull-requests: write
 
     runs-on: ${{ matrix.runner }}
@@ -90,6 +91,8 @@ jobs:
           directory: site
           zone: ${{ vars.WATERSHIPUP_TEST_ZONE }}
           password: ${{ secrets.WATERSHIPUP_TEST_PASSWORD }}
+          # On a push to `main`, comment on the pull request that was merged.
+          pull-request: ${{ github.event.pull_request.number || 'merged' }}
 
       - name: Check what was published
         env:
@@ -114,6 +117,7 @@ jobs:
           zone: ${{ vars.WATERSHIPUP_TEST_ZONE }}
           password: ${{ secrets.WATERSHIPUP_TEST_READ_ONLY_PASSWORD }}
           dry-run: true
+          pull-request: ${{ github.event.pull_request.number || 'merged' }}
 
       - name: Check that the dry run published nothing
         env:
@@ -125,13 +129,29 @@ jobs:
           cmp published.html still-published.html
 
       - name: Check the pull request's comments
-        if: github.event.pull_request.number
         env:
+          FORK: ${{ github.event.repository.fork }}
           GH_TOKEN: ${{ github.token }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}
           RUNNER: ${{ matrix.runner }}
           ZONE: ${{ vars.WATERSHIPUP_TEST_ZONE }}
         run: |
+          if [[ -z $PULL_REQUEST ]]; then
+            PULL_REQUEST=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at and .base.ref == env.GITHUB_REF_NAME and .base.repo.full_name == env.GITHUB_REPOSITORY)] | sort_by(.merged_at) | last.number // empty')
+
+            # This repository's `main` only takes pull requests, so a push with
+            # none is a broken lookup. A fork's `main` takes direct pushes.
+            if [[ -z $PULL_REQUEST ]]; then
+              if [[ $FORK == true ]]; then
+                echo "::notice::No merged pull request made $GITHUB_SHA, so there are no comments to check."
+                exit 0
+              fi
+
+              echo "::error::No merged pull request made $GITHUB_SHA, but every push to main should come from one."
+              exit 1
+            fi
+          fi
+
           gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PULL_REQUEST/comments" --jq '.[] | select(.user.login == "github-actions[bot]") | .body | @json' | tail -n 2 > comments.jsonl
           cat comments.jsonl
           head -n 1 comments.jsonl | grep -F "## Published to \`$ZONE\`"

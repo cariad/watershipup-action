@@ -34,7 +34,7 @@
 
 CI's `test` job runs the action on every runner in its matrix. It publishes a page that only that job could have made to a real storage zone, and checks that the zone holds it. Then it changes the page, dry runs it with the zone's read-only password, and checks that the zone still holds the first page. That shows that the action installed WatershipUp, passed it every input, and passed `--dry-run` only when asked to, and that a dry run works with the read-only password.
 
-The dry run also has a new page that only that job could have made. On a pull request, the job checks that the action's last two comments are the publish's report and then the dry run's, with that new page.
+The dry run also has a new page that only that job could have made. On a pull request, the job checks that the action's last two comments are the publish's report and then the dry run's, with that new page. On a push to `main`, it sets `pull-request` to `merged`, and checks the same comments on the pull request that was merged.
 
 ### Storage zone
 
